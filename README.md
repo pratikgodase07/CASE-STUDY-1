@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🍔 Food Delivery System
+# 🍔 Food Delivery System - Case Study 1
 
 **A console-based Java + MySQL backend for managing food items, customers, orders, and delivery partners.**
 
