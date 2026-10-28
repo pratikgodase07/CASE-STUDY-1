@@ -4,7 +4,7 @@
 
 **A console-based Java + MySQL backend for managing food items, customers, orders, and delivery partners.**
 
-![Java](https://img.shields.io/badge/Java-22-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white)
+![Java](https://img.shields.io/badge/Java-17%2B-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white)
 ![Maven](https://img.shields.io/badge/Maven-Build-C71A36?style=for-the-badge&logo=apachemaven&logoColor=white)
 ![MySQL](https://img.shields.io/badge/MySQL-8.x-4479A1?style=for-the-badge&logo=mysql&logoColor=white)
 ![JDBC](https://img.shields.io/badge/JDBC-Connector%2FJ%208.3.0-005C84?style=for-the-badge)
@@ -22,7 +22,11 @@
 
 > 🍽️ add food to a restaurant → 👤 register a customer → 🛒 place an order → 🛵 assign a delivery partner
 
-Every database operation uses `PreparedStatement` (protection against SQL injection), and order placement runs inside a **transaction** so an order and its items are saved together or not at all.
+- 🖥️ **Interactive console menu**: drive the whole flow from the terminal, no code editing needed.
+- 🛡️ **Safe SQL**: every query uses `PreparedStatement` (protection against SQL injection).
+- 🔁 **Transactional orders**: an order and its items are saved together or not at all (commit / rollback).
+- 🔐 **No credentials in code**: database settings are read from environment variables.
+- 🗄️ **Ready-to-run schema**: `schema.sql` is included.
 
 ---
 
@@ -30,10 +34,11 @@ Every database operation uses `PreparedStatement` (protection against SQL inject
 
 | | Feature | Where |
 |---|---|---|
+| 🖥️ | Interactive menu with input validation (re-prompts on bad input) | `Main` |
 | 🍕 | Add / remove food items for a restaurant | `FoodServices` |
 | 📋 | List all food items | `FoodServices.getAllFoodItems()` |
 | 👤 | Register a customer & check if one exists | `CustomerService` |
-| 🛒 | Place an order with multiple items (transactional) | `OrderService.placeOrder()` |
+| 🛒 | Place an order with multiple items (transactional, rejects empty carts / invalid quantities) | `OrderService.placeOrder()` |
 | 🛵 | Add delivery persons & assign them to orders | `OrderService` |
 
 ---
@@ -42,9 +47,9 @@ Every database operation uses `PreparedStatement` (protection against SQL inject
 
 ```mermaid
 flowchart LR
-    M[Main.java] --> FS[FoodServices]
-    M -.-> CS[CustomerService]
-    M -.-> OS[OrderService]
+    M[Main.java<br/>console menu] --> FS[FoodServices]
+    M --> CS[CustomerService]
+    M --> OS[OrderService]
     FS --> DB[DBConnection]
     CS --> DB
     OS --> DB
@@ -52,18 +57,17 @@ flowchart LR
     DB --> SQL[(MySQL<br/>Food_Delivery_system)]
 ```
 
-*Solid arrows = used in the current `Main`. Dotted arrows = available services you can call.*
-
 <details>
 <summary><b>📁 Project structure (click to expand)</b></summary>
 
 ```
 CASE-STUDY-1/
-├── pom.xml                              # Maven config (Java 22, MySQL connector)
+├── pom.xml                              # Maven config (Java 17+, MySQL connector, exec plugin)
+├── schema.sql                           # Database + tables
 ├── README.md
 └── src/main/java/org/example/
-    ├── Main.java              # Entry point / demo
-    ├── DBConnection.java      # JDBC connection factory
+    ├── Main.java              # Entry point: interactive console menu
+    ├── DBConnection.java      # JDBC connection factory (reads DB_* env vars)
     ├── FoodItem.java          # Model (id, name, price)
     ├── FoodServices.java      # Food item CRUD
     ├── CustomerService.java   # Customer create / exists
@@ -77,7 +81,7 @@ CASE-STUDY-1/
 
 | Class | Method | What it does |
 |---|---|---|
-| `DBConnection` | `getConnection()` | Returns a new MySQL `Connection` |
+| `DBConnection` | `getConnection()` | Returns a new MySQL `Connection` using `DB_URL`, `DB_USER`, `DB_PASSWORD` |
 | `FoodItem` | getters / setters / `toString()` | POJO for a menu item |
 | `FoodServices` | `addFoodItemToRestaurant(int restaurantId, FoodItem item)` | Inserts into `food_items` |
 | `FoodServices` | `removeFoodItemFromRestaurant(int restaurantId, int foodItemId)` | Deletes a restaurant's item, reports if not found |
@@ -85,7 +89,7 @@ CASE-STUDY-1/
 | `CustomerService` | `addCustomer(int userId, String username, long contactNo)` | Inserts into `users` |
 | `CustomerService` | `customerExists(int userId)` | `true` if the user is found |
 | `OrderService` | `addDeliveryPerson(int id, String name, long contactNo)` | Inserts into `delivery_persons` |
-| `OrderService` | `placeOrder(int orderId, int customerId, Map<Integer,Integer> cart)` | Saves order + items in **one transaction** (commit / rollback) |
+| `OrderService` | `placeOrder(int orderId, int customerId, Map<Integer,Integer> cart)` | Saves order + items in **one transaction** (commit / rollback). Returns `true` only if committed |
 | `OrderService` | `assignDeliveryPersonToOrder(int orderId, int deliveryPersonId)` | Updates the order's delivery person |
 
 </details>
@@ -114,7 +118,7 @@ sequenceDiagram
 
 ## 🗄️ Database schema
 
-The repo does not ship a SQL script, so this schema is **derived from the queries in the code**. Adjust the types and constraints as needed.
+The full schema ships in [`schema.sql`](schema.sql). The diagram below shows how the tables relate.
 
 ```mermaid
 erDiagram
@@ -152,60 +156,13 @@ erDiagram
     }
 ```
 
-<details>
-<summary><b>📜 Copy-paste setup SQL (click to expand)</b></summary>
-
-```sql
-CREATE DATABASE IF NOT EXISTS Food_Delivery_system;
-USE Food_Delivery_system;
-
-CREATE TABLE users (
-    user_id     INT PRIMARY KEY,
-    username    VARCHAR(100) NOT NULL,
-    contact_no  BIGINT
-);
-
-CREATE TABLE food_items (
-    id             INT PRIMARY KEY,
-    name           VARCHAR(100) NOT NULL,
-    price          DOUBLE NOT NULL,
-    restaurant_id  INT NOT NULL
-);
-
-CREATE TABLE delivery_persons (
-    delivery_person_id  INT PRIMARY KEY,
-    name                VARCHAR(100) NOT NULL,
-    contact_no          BIGINT
-);
-
-CREATE TABLE orders (
-    order_id            INT PRIMARY KEY,
-    customer_id         INT NOT NULL,
-    status              VARCHAR(30) DEFAULT 'Pending',
-    delivery_person_id  INT NULL,
-    FOREIGN KEY (customer_id)        REFERENCES users(user_id),
-    FOREIGN KEY (delivery_person_id) REFERENCES delivery_persons(delivery_person_id)
-);
-
-CREATE TABLE order_items (
-    order_id      INT NOT NULL,
-    food_item_id  INT NOT NULL,
-    quantity      INT NOT NULL,
-    PRIMARY KEY (order_id, food_item_id),
-    FOREIGN KEY (order_id)     REFERENCES orders(order_id),
-    FOREIGN KEY (food_item_id) REFERENCES food_items(id)
-);
-```
-
-</details>
-
 ---
 
 ## 🚀 Quick start
 
 ### ✅ Prerequisites
 
-- [ ] **JDK 22** (`java -version`)
+- [ ] **JDK 17 or newer** (`java -version`)
 - [ ] **Maven 3.8+** (`mvn -v`)
 - [ ] **MySQL 8.x** running on `localhost:3306`
 
@@ -218,7 +175,7 @@ cd CASE-STUDY-1
 
 ### 2️⃣ Create the database
 
-Run the setup SQL above in MySQL Workbench or the CLI:
+Run [`schema.sql`](schema.sql) from the CLI (or paste it into MySQL Workbench):
 
 ```bash
 mysql -u root -p < schema.sql
@@ -226,15 +183,31 @@ mysql -u root -p < schema.sql
 
 ### 3️⃣ Configure the connection
 
-Open `src/main/java/org/example/DBConnection.java` and set your own MySQL username and password.
+Credentials are read from environment variables, so nothing sensitive is stored in the code:
 
-> ⚠️ **Never commit real passwords.** See the [security note](#-security-note) below for the safer environment-variable approach.
+| Variable | Default | Purpose |
+|---|---|---|
+| `DB_URL` | `jdbc:mysql://localhost:3306/Food_Delivery_system` | JDBC URL |
+| `DB_USER` | `root` | MySQL username |
+| `DB_PASSWORD` | *(empty)* | MySQL password |
+
+```bash
+# Linux / macOS
+export DB_USER=root
+export DB_PASSWORD=your_password
+
+# Windows (PowerShell)
+$env:DB_USER="root"
+$env:DB_PASSWORD="your_password"
+```
+
+> In IntelliJ IDEA, set these under **Run → Edit Configurations → Environment variables**.
 
 ### 4️⃣ Build & run
 
 ```bash
 mvn clean compile
-mvn exec:java -Dexec.mainClass="org.example.Main"
+mvn exec:java
 ```
 
 Or open the project in **IntelliJ IDEA** and run `Main.java` directly.
@@ -243,8 +216,22 @@ Or open the project in **IntelliJ IDEA** and run `Main.java` directly.
 <summary><b>✅ Expected output</b></summary>
 
 ```
+=== Food Delivery System ===
+
+1. Add food item
+2. List food items
+3. Remove food item
+4. Register customer
+5. Add delivery person
+6. Place order
+7. Assign delivery person to order
+0. Exit
+Choose an option: 1
+Restaurant ID: 101
+Food item ID: 1
+Name: Panjabi Thali
+Price: 340
 Food item saved to database!
-Food items in DB: [FoodItem{id=1, name='Panjabi Thali', price=340.0}]
 ```
 
 </details>
@@ -254,17 +241,20 @@ Food items in DB: [FoodItem{id=1, name='Panjabi Thali', price=340.0}]
 
 | Problem | Likely cause | Fix |
 |---|---|---|
-| `Access denied for user 'root'` | Wrong credentials in `DBConnection` | Update the username / password |
-| `Unknown database 'Food_Delivery_system'` | Database not created | Run the setup SQL |
+| `Access denied for user 'root'` | Wrong or missing `DB_USER` / `DB_PASSWORD` | Set the environment variables (see step 3) |
+| `Unknown database 'Food_Delivery_system'` | Database not created | Run `schema.sql` |
 | `Communications link failure` | MySQL is not running | Start the MySQL service |
 | `Duplicate entry '1' for key 'PRIMARY'` | IDs are passed manually and already exist | Use a new ID or clear the table |
-| `release version 22 not supported` | Older JDK | Install JDK 22 or lower `maven.compiler.*` in `pom.xml` |
+| `Cannot add or update a child row` | Foreign key violation (e.g. unknown customer or food item in an order) | Create the customer / food item first; a failed order is rolled back automatically |
+| `release version 17 not supported` | JDK older than 17 | Install JDK 17 or newer |
 
 </details>
 
 ---
 
 ## 🧪 Usage examples
+
+The menu in `Main` wraps the services below. You can also call them directly from your own code:
 
 <details open>
 <summary><b>🍕 Add and list food items</b></summary>
@@ -303,7 +293,7 @@ Map<Integer, Integer> cart = new HashMap<>();
 cart.put(1, 2);   // 2 x Panjabi Thali
 cart.put(2, 1);   // 1 x Masala Dosa
 
-orderService.placeOrder(5001, 1, cart);
+boolean ok = orderService.placeOrder(5001, 1, cart); // true only if committed
 ```
 
 </details>
@@ -331,39 +321,11 @@ foodServices.removeFoodItemFromRestaurant(101, 2);
 
 ## 🔐 Security note
 
-<details>
-<summary><b>Use environment variables instead of hardcoded credentials (recommended)</b></summary>
+Database credentials are read from environment variables (see [Quick start](#-quick-start)) and are no longer hardcoded.
 
-Credentials should not live in source control. If a password was ever committed, **change it** and treat the old one as exposed, since it remains in git history.
+> ⚠️ An earlier commit in this repository's history contained a hardcoded database password. Git history is permanent, so if that password is used anywhere real, **change it**. Never reuse a password that was ever committed.
 
-Replace the constants in `DBConnection.java`:
-
-```java
-public class DBConnection {
-    private static final String URL =
-            System.getenv().getOrDefault("DB_URL", "jdbc:mysql://localhost:3306/Food_Delivery_system");
-    private static final String USER     = System.getenv("DB_USER");
-    private static final String PASSWORD = System.getenv("DB_PASSWORD");
-
-    public static Connection getConnection() throws SQLException {
-        return DriverManager.getConnection(URL, USER, PASSWORD);
-    }
-}
-```
-
-Then run with:
-
-```bash
-# Linux / macOS
-export DB_USER=root
-export DB_PASSWORD=your_password
-
-# Windows (PowerShell)
-$env:DB_USER="root"
-$env:DB_PASSWORD="your_password"
-```
-
-</details>
+Also in place: all SQL uses `PreparedStatement`, `.env` and `.idea/` are git-ignored.
 
 ---
 
@@ -374,9 +336,10 @@ $env:DB_PASSWORD="your_password"
 - [x] Customer registration
 - [x] Transactional order placement
 - [x] Delivery person assignment
-- [ ] Interactive console menu (`Scanner`) in `Main`
-- [ ] Move credentials to environment variables / `.properties`
-- [ ] Add `schema.sql` to the repo
+- [x] Interactive console menu (`Scanner`) in `Main`
+- [x] Move credentials to environment variables
+- [x] Add `schema.sql` to the repo
+- [ ] Surface database errors to callers instead of printing them (services currently catch `SQLException` internally)
 - [ ] Order status updates (`Pending → Preparing → Out for delivery → Delivered`)
 - [ ] Restaurants table + foreign key on `food_items`
 - [ ] Auto-generated IDs (`AUTO_INCREMENT`) instead of manual IDs
